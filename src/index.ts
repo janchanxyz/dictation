@@ -157,7 +157,7 @@ async function handleVoices() {
         Gender: v.Gender,
         FriendlyName: v.FriendlyName || v.ShortName,
       }))
-      .sort((a, b) => a.Locale.localeCompare(b.Locale) || a.ShortName.localeCompare(b.ShortName));
+      .sort((a, b) => a.ShortName.localeCompare(b.ShortName, undefined, { sensitivity: "base" }));
     return json({ voices: simplified, defaultVoice: DEFAULT_VOICE });
   } catch (error) {
     console.error("voice list fetch failed", error);

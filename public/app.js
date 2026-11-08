@@ -969,18 +969,11 @@
   }
 
   function populateVoices(voices) {
-    const priorityLocales = new Set([
-      "en-GB",
-      "en-US",
-      "en-AU",
-      "zh-HK",
-      "zh-CN",
-      "zh-TW",
-      "yue-CN",
-    ]);
-    const preferred = voices.filter((v) => priorityLocales.has(v.Locale));
-    const rest = voices.filter((v) => !priorityLocales.has(v.Locale));
-    const ordered = [...preferred, ...rest];
+    const ordered = [...voices].sort((a, b) =>
+      String(a.ShortName || "").localeCompare(String(b.ShortName || ""), undefined, {
+        sensitivity: "base",
+      })
+    );
     els.voiceSelect.innerHTML = "";
     for (const v of ordered) {
       const opt = document.createElement("option");
@@ -1006,10 +999,10 @@
       els.voiceSelect.innerHTML = "";
       const fallback = [
         "en-GB-SoniaNeural",
-        "en-US-JennyNeural",
         "en-US-AvaMultilingualNeural",
+        "en-US-JennyNeural",
         "zh-CN-XiaoxiaoNeural",
-      ];
+      ].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
       for (const name of fallback) {
         const opt = document.createElement("option");
         opt.value = name;
