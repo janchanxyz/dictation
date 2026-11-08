@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>Dictation Practice</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="brand">
+        <img class="brand-icon" src="/favicon-192.png" width="44" height="44" alt="" />
+        <div>
+          <h1 data-i18n="appTitle">Dictation</h1>
+          <p class="subtitle" data-i18n="appSubtitle">Paste a list · practice gaps</p>
+        </div>
+      </div>
+      <div class="lang-switch" role="group" aria-label="Language">
+        <button type="button" id="langEn" class="lang-btn" data-lang="en" aria-pressed="true">English</button>
+        <button type="button" id="langZh" class="lang-btn" data-lang="zh-Hant" aria-pressed="false">繁體中文</button>
+      </div>
+    </header>
+
+    <section class="panel">
+      <label class="label" for="listInput" data-i18n="listLabel">Word / sentence list</label>
+      <textarea
+        id="listInput"
+        class="list-input"
+        rows="10"
+        data-i18n-placeholder="listPlaceholder"
+        placeholder="Paste one item per line&#10;apple&#10;banana&#10;I like reading books.&#10;你好"
+        autocomplete="off"
+        autocorrect="off"
+        spellcheck="false"
+      ></textarea>
+      <p class="hint" data-i18n-html="listHint">
+        Delay rule: a line with <strong>spaces</strong> (or ending in .?!。！？) uses the
+        <em>sentence</em> wait after speaking; a single token uses the <em>word</em> wait.
+        Tap the <strong>▶</strong> button on any line to replay it right away.
+      </p>
+    </section>
+
+    <section class="panel settings">
+      <div class="field">
+        <label class="label" for="wordGap" data-i18n="wordGap">Word gap (seconds)</label>
+        <input id="wordGap" type="number" min="0" max="600" step="1" value="10" inputmode="numeric" />
+      </div>
+      <div class="field">
+        <label class="label" for="sentenceGap" data-i18n="sentenceGap">Sentence gap (seconds)</label>
+        <input id="sentenceGap" type="number" min="0" max="600" step="1" value="30" inputmode="numeric" />
+      </div>
+      <div class="field field-wide">
+        <label class="label" for="voiceSelect" data-i18n="voiceLabel">Voice</label>
+        <select id="voiceSelect">
+          <option value="" data-i18n="loadingVoices">Loading voices…</option>
+        </select>
+      </div>
+    </section>
+
+    <section class="status-panel" aria-live="polite">
+      <div class="status-row">
+        <span id="progressLabel" class="progress" data-i18n="ready">Ready</span>
+        <span id="countdownLabel" class="countdown"></span>
+      </div>
+      <div id="currentItem" class="current-item">—</div>
+      <p id="listMeta" class="list-meta" aria-live="polite"></p>
+      <ol id="previewList" class="preview-list" hidden></ol>
+    </section>
+
+    <nav class="controls" data-i18n-aria="playbackControls" aria-label="Playback controls">
+      <button type="button" id="btnStart" class="btn btn-start" data-i18n="start">Start</button>
+      <button type="button" id="btnPause" class="btn btn-pause" data-i18n="pause" disabled>Pause</button>
+      <button type="button" id="btnResume" class="btn btn-resume" data-i18n="resume" disabled>Resume</button>
+      <button type="button" id="btnSkip" class="btn btn-skip" data-i18n="skip" disabled>Skip</button>
+      <button type="button" id="btnStop" class="btn btn-stop" data-i18n="stop" disabled>Stop</button>
+    </nav>
+
+    <p id="errorBox" class="error" hidden></p>
+  </div>
+
+  <audio id="player" preload="auto" playsinline></audio>
+  <audio id="replayPlayer" preload="auto" playsinline></audio>
+  <script src="/app.js"></script>
+</body>
+</html>
