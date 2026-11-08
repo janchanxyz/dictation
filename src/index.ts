@@ -21,7 +21,11 @@ function parseTtsBody(body: unknown) {
     throw new Error("request body must be an object");
   }
 
-  const { text, voice } = body as { text?: unknown; voice?: unknown };
+  const { text, voice, rate } = body as {
+    text?: unknown;
+    voice?: unknown;
+    rate?: unknown;
+  };
 
   if (typeof text !== "string" || text.trim().length === 0) {
     throw new Error("text is required");
@@ -36,9 +40,19 @@ function parseTtsBody(body: unknown) {
     }
   }
 
+  let parsedRate: number | undefined;
+  if (rate !== undefined) {
+    const n = typeof rate === "number" ? rate : Number(rate);
+    if (!Number.isFinite(n)) {
+      throw new Error("rate must be a number");
+    }
+    parsedRate = Math.min(1.5, Math.max(0.5, n));
+  }
+
   return {
     text: text.trim(),
     voice: typeof voice === "string" ? voice.trim() : undefined,
+    rate: parsedRate,
   };
 }
 
@@ -112,6 +126,7 @@ async function handleTts(request: Request) {
     const stream = await createAudioStream({
       text: parsed.text,
       voice: parsed.voice ?? DEFAULT_VOICE,
+      rate: parsed.rate ?? 1,
     });
     const primedStream = await primeAudioStream(stream);
     return new Response(primedStream, {

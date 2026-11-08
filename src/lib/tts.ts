@@ -54,6 +54,8 @@ export type Voice = {
 export type TtsInput = {
   text: string;
   voice?: string;
+  /** Speech rate multiplier, e.g. 0.5–1.5. 1 = normal. Mapped to SSML prosody %. */
+  rate?: number;
 };
 
 export type TtsRuntime = {
@@ -145,10 +147,22 @@ function buildSpeechConfigMessage() {
   );
 }
 
-function buildSsmlMessage(requestId: string, voice: string, text: string) {
+function rateToProsodyPercent(rate: number) {
+  const clamped = Math.min(1.5, Math.max(0.5, rate));
+  const percent = Math.round((clamped - 1) * 100);
+  return `${percent >= 0 ? "+" : ""}${percent}%`;
+}
+
+function buildSsmlMessage(
+  requestId: string,
+  voice: string,
+  text: string,
+  rate = 1
+) {
+  const rateAttr = rateToProsodyPercent(rate);
   const ssml =
     "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>" +
-    `<voice name='${voice}'><prosody pitch='+0Hz' rate='+0%' volume='+0%'>${escapeXml(
+    `<voice name='${voice}'><prosody pitch='+0Hz' rate='${rateAttr}' volume='+0%'>${escapeXml(
       removeInvalidXmlCharacters(text)
     )}</prosody></voice></speak>`;
 
@@ -254,7 +268,8 @@ function createReadableAudioStream(
   socket: WebSocket,
   text: string,
   voice: string,
-  requestId: string
+  requestId: string,
+  rate = 1
 ) {
   let controllerRef: ReadableStreamDefaultController<Uint8Array> | null = null;
   let audioReceived = false;
@@ -394,7 +409,7 @@ function createReadableAudioStream(
       socket.addEventListener("error", onError);
       socket.accept();
       socket.send(buildSpeechConfigMessage());
-      socket.send(buildSsmlMessage(requestId, voice, text));
+      socket.send(buildSsmlMessage(requestId, voice, text, rate));
     },
     cancel(reason) {
       cleanup();
@@ -409,7 +424,7 @@ function createReadableAudioStream(
 }
 
 export async function createAudioStream(
-  { text, voice }: TtsInput,
+  { text, voice, rate }: TtsInput,
   runtime: TtsRuntime = defaultRuntime()
 ): Promise<ReadableStream<Uint8Array>> {
   const secMsGec = generateSecMsGec(TRUSTED_CLIENT_TOKEN);
@@ -426,11 +441,15 @@ export async function createAudioStream(
     throw new Error(`WebSocket upgrade failed with status ${response.status}`);
   }
 
+  const safeRate =
+    typeof rate === "number" && Number.isFinite(rate) ? rate : 1;
+
   return createReadableAudioStream(
     response.webSocket,
     text,
     normalizeVoiceName(voice ?? DEFAULT_VOICE),
-    makeConnectionId(runtime)
+    makeConnectionId(runtime),
+    safeRate
   );
 }
 

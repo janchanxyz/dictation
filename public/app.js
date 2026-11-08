@@ -15,6 +15,9 @@
       wordGap: "Word gap (seconds)",
       sentenceGap: "Sentence gap (seconds)",
       voiceLabel: "Voice",
+      speedLabel: "Pronunciation speed",
+      randomize: "Randomize order",
+      randomized: "List order randomized",
       loadingVoices: "Loading voices…",
       ready: "Ready",
       readyCount: "Ready · {n} item",
@@ -37,6 +40,7 @@
       replay: "Replay",
       replayItem: "Replay item {n}",
       errEmpty: "Paste or type at least one word or sentence (one per line).",
+      errNeedTwo: "Add at least two items to randomize the order.",
       errNoVoice: "No voice selected yet. Wait for voices to load, or pick one.",
       errPickVoiceReplay: "Pick a voice first, then tap ▶ to replay.",
       errReplayTts: "Replay TTS failed ({status})",
@@ -54,6 +58,9 @@
       wordGap: "單字間隔（秒）",
       sentenceGap: "句子間隔（秒）",
       voiceLabel: "語音",
+      speedLabel: "發音速度",
+      randomize: "隨機排序",
+      randomized: "已隨機打亂順序",
       loadingVoices: "載入語音中…",
       ready: "準備就緒",
       readyCount: "準備就緒 · {n} 項",
@@ -76,6 +83,7 @@
       replay: "重播",
       replayItem: "重播第 {n} 項",
       errEmpty: "請至少貼上或輸入一個單字或句子（每行一項）。",
+      errNeedTwo: "至少需要兩項才能隨機排序。",
       errNoVoice: "尚未選擇語音。請等待語音載入，或手動挑選。",
       errPickVoiceReplay: "請先選擇語音，再點 ▶ 重播。",
       errReplayTts: "重播語音失敗（{status}）",
@@ -193,6 +201,9 @@
     wordGap: document.getElementById("wordGap"),
     sentenceGap: document.getElementById("sentenceGap"),
     voiceSelect: document.getElementById("voiceSelect"),
+    speedRange: document.getElementById("speedRange"),
+    speedValue: document.getElementById("speedValue"),
+    btnRandomize: document.getElementById("btnRandomize"),
     progressLabel: document.getElementById("progressLabel"),
     countdownLabel: document.getElementById("countdownLabel"),
     currentItem: document.getElementById("currentItem"),
@@ -236,7 +247,56 @@
     els.errorBox.textContent = message;
   }
 
-  function parseItems(text) {
+  function getSpeechRate() {
+    const n = Number(els.speedRange?.value);
+    if (!Number.isFinite(n)) return 1;
+    return Math.min(1.5, Math.max(0.5, Math.round(n * 100) / 100));
+  }
+
+  function formatSpeedLabel(rate) {
+    const rounded = Math.round(rate * 100) / 100;
+    const text = Number.isInteger(rounded * 10) || Math.abs(rounded * 10 - Math.round(rounded * 10)) < 1e-9
+      ? rounded.toFixed(1)
+      : String(rounded);
+    return `${text}×`;
+  }
+
+  function updateSpeedLabel() {
+    if (els.speedValue) {
+      els.speedValue.textContent = formatSpeedLabel(getSpeechRate());
+    }
+  }
+
+  function shuffleInPlace(arr) {
+    for (let i = arr.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const tmp = arr[i];
+      arr[i] = arr[j];
+      arr[j] = tmp;
+    }
+    return arr;
+  }
+
+  function onRandomize() {
+    if (state !== "idle") return;
+    const list = parseItems(els.listInput.value);
+    if (list.length < 2) {
+      showError(t("errNeedTwo"));
+      return;
+    }
+    showError("");
+    shuffleInPlace(list);
+    els.listInput.value = list.join("\n");
+    items = list;
+    lastPreviewItemsKey = ""; // force preview rebuild
+    saveSettings();
+    updateProgress();
+    renderPreview();
+    // brief confirmation in progress label
+    els.progressLabel.textContent = t("randomized");
+  }
+
+    function parseItems(text) {
     return text
       .split(/\r?\n/)
       .map((line) => line.trim())
@@ -261,6 +321,9 @@
       const data = JSON.parse(raw);
       if (typeof data.wordGap === "number") els.wordGap.value = String(data.wordGap);
       if (typeof data.sentenceGap === "number") els.sentenceGap.value = String(data.sentenceGap);
+      if (typeof data.speed === "number" && Number.isFinite(data.speed)) {
+        els.speedRange.value = String(Math.min(1.5, Math.max(0.5, data.speed)));
+      }
       if (typeof data.text === "string") els.listInput.value = data.text;
       if (typeof data.voice === "string") els.voiceSelect.dataset.savedVoice = data.voice;
     } catch {
@@ -275,6 +338,7 @@
         JSON.stringify({
           wordGap: Number(els.wordGap.value) || 10,
           sentenceGap: Number(els.sentenceGap.value) || 30,
+          speed: getSpeechRate(),
           voice: els.voiceSelect.value || "",
           text: els.listInput.value,
         })
@@ -297,6 +361,8 @@
     els.wordGap.disabled = !idle;
     els.sentenceGap.disabled = !idle;
     els.voiceSelect.disabled = !idle;
+    if (els.speedRange) els.speedRange.disabled = !idle;
+    if (els.btnRandomize) els.btnRandomize.disabled = !idle;
   }
 
   function escapeHtml(s) {
@@ -551,7 +617,7 @@
       const res = await fetch("/api/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, voice }),
+        body: JSON.stringify({ text, voice, rate: getSpeechRate() }),
       });
       if (token !== replayToken) return;
       if (!res.ok) {
@@ -649,7 +715,7 @@
     const res = await fetch("/api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, voice }),
+      body: JSON.stringify({ text, voice, rate: getSpeechRate() }),
     });
     if (gen !== generation) return "stop";
     if (!res.ok) {
@@ -929,7 +995,13 @@
     els.wordGap.addEventListener(evt, saveSettings);
     els.sentenceGap.addEventListener(evt, saveSettings);
     els.voiceSelect.addEventListener(evt, saveSettings);
+    els.speedRange.addEventListener(evt, () => {
+      updateSpeedLabel();
+      saveSettings();
+    });
   });
+
+  els.btnRandomize.addEventListener("click", onRandomize);
 
   els.btnStart.addEventListener("click", onStart);
   els.btnPause.addEventListener("click", onPause);
@@ -962,6 +1034,7 @@
 
   lang = loadLang();
   loadSettings();
+  updateSpeedLabel();
   items = parseItems(els.listInput.value);
   applyI18n();
   setControls();

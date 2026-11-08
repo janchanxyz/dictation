@@ -9,9 +9,11 @@ Deployed as a Cloudflare Worker named `dictation` (static assets + `/api` TTS pr
 1. Open the live Worker URL.
 2. Paste or type one item per line into the text area.
 3. Set **Word gap** (default 10s) and **Sentence gap** (default 30s).
-4. Pick an Edge TTS voice (defaults to **en-GB-SoniaNeural**).
-5. Tap **Start**. On iOS Safari, Start also unlocks audio.
-6. Tap the **▶** button on any line to replay that item immediately.
+4. Adjust **Pronunciation speed** (0.5×–1.5×; default 1×).
+5. Optionally tap **Randomize order** to shuffle the list.
+6. Pick an Edge TTS voice (defaults to **en-GB-SoniaNeural**).
+7. Tap **Start**. On iOS Safari, Start also unlocks audio.
+8. Tap the **▶** button on any line to replay that item immediately.
 
 ### Word vs sentence delay
 
