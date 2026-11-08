@@ -278,21 +278,25 @@
   }
 
   function onRandomize() {
-    if (state !== "idle") return;
+    if (state !== "idle") {
+      // If session is stuck, recover so the user can shuffle again.
+      finishSession(false);
+    }
     const list = parseItems(els.listInput.value);
     if (list.length < 2) {
       showError(t("errNeedTwo"));
+      setControls();
       return;
     }
     showError("");
     shuffleInPlace(list);
     els.listInput.value = list.join("\n");
-    items = list;
+    items = list.slice();
     lastPreviewItemsKey = ""; // force preview rebuild
     saveSettings();
+    setControls();
     updateProgress();
     renderPreview();
-    // brief confirmation in progress label
     els.progressLabel.textContent = t("randomized");
   }
 
@@ -571,24 +575,31 @@
     setTimeout(() => li.classList.remove("flash"), 700);
   }
 
-  async function replayItem(i) {
+  async function replayItem(i, presetText) {
     // Works in idle (before Start) and during a session — no Start required.
+    // Source of truth for idle: textarea. Capture text BEFORE any DOM rebuild
+    // so we never speak the wrong line after a re-render.
     if (state === "idle") {
       items = parseItems(els.listInput.value);
-      if (!items.length) {
-        showError(t("errEmpty"));
-        return;
-      }
-      // Keep preview in sync if the textarea changed without an input event.
-      renderPreview();
     }
 
-    const text = items[i];
-    if (!text) return;
+    const text =
+      typeof presetText === "string" && presetText.length
+        ? presetText
+        : items[i];
+    if (!text) {
+      showError(t("errEmpty"));
+      return;
+    }
+
+    // Keep in-memory list aligned for flash/highlight, but do not rebuild
+    // before we've locked in `text` (that previously caused wrong-item bugs).
+    if (state === "idle" && items[i] !== text) {
+      // Index may be stale relative to textarea; still speak clicked text.
+    }
 
     const voice = els.voiceSelect.value || "en-GB-SoniaNeural";
     if (!els.voiceSelect.value) {
-      // Prefer a working default rather than blocking idle replay.
       try {
         els.voiceSelect.value = voice;
       } catch {
@@ -670,7 +681,6 @@
     // Start session uses player. iOS Safari gates each element separately.
     const unlockOne = async (audioEl) => {
       if (!audioEl) return;
-      const prev = audioEl.src;
       audioEl.src = silent;
       try {
         await audioEl.play();
@@ -679,12 +689,11 @@
       } catch {
         /* continue */
       }
-      if (prev && !prev.startsWith("data:")) {
-        try {
-          audioEl.src = prev;
-        } catch {
-          /* ignore */
-        }
+      try {
+        audioEl.removeAttribute("src");
+        audioEl.load();
+      } catch {
+        /* ignore */
       }
     };
     await unlockOne(els.player);
@@ -845,28 +854,55 @@
   }
 
   async function onStart() {
-    items = parseItems(els.listInput.value);
-    if (!items.length) {
-      showError(t("errEmpty"));
-      return;
+    try {
+      // Recover if a prior session crashed without finishSession (Start stuck disabled).
+      if (state !== "idle") {
+        finishSession(false);
+      }
+
+      items = parseItems(els.listInput.value);
+      if (!items.length) {
+        showError(t("errEmpty"));
+        setControls();
+        return;
+      }
+
+      if (!els.voiceSelect.value) {
+        try {
+          els.voiceSelect.value = "en-GB-SoniaNeural";
+        } catch {
+          /* ignore */
+        }
+      }
+      if (!els.voiceSelect.value) {
+        showError(t("errNoVoice"));
+        setControls();
+        return;
+      }
+
+      saveSettings();
+      showError("");
+      await unlockAudio();
+      generation += 1;
+      const gen = generation;
+      index = 0;
+      state = "running";
+      releasePause = null;
+      pauseGate = Promise.resolve();
+      setControls();
+      updateProgress();
+      renderPreview({ forceScroll: true });
+      sessionPromise = runSession(gen).catch((err) => {
+        console.error("runSession failed", err);
+        showError(err instanceof Error ? err.message : String(err));
+        if (gen === generation) finishSession(false);
+      });
+    } catch (err) {
+      console.error("onStart failed", err);
+      showError(err instanceof Error ? err.message : String(err));
+      state = "idle";
+      setControls();
     }
-    if (!els.voiceSelect.value) {
-      showError(t("errNoVoice"));
-      return;
-    }
-    saveSettings();
-    showError("");
-    await unlockAudio();
-    generation += 1;
-    const gen = generation;
-    index = 0;
-    state = "running";
-    releasePause = null;
-    pauseGate = Promise.resolve();
-    setControls();
-    updateProgress();
-    renderPreview({ forceScroll: true });
-    sessionPromise = runSession(gen);
   }
 
   function onPause() {
@@ -995,13 +1031,17 @@
     els.wordGap.addEventListener(evt, saveSettings);
     els.sentenceGap.addEventListener(evt, saveSettings);
     els.voiceSelect.addEventListener(evt, saveSettings);
-    els.speedRange.addEventListener(evt, () => {
-      updateSpeedLabel();
-      saveSettings();
-    });
+    if (els.speedRange) {
+      els.speedRange.addEventListener(evt, () => {
+        updateSpeedLabel();
+        saveSettings();
+      });
+    }
   });
 
-  els.btnRandomize.addEventListener("click", onRandomize);
+  if (els.btnRandomize) {
+    els.btnRandomize.addEventListener("click", onRandomize);
+  }
 
   els.btnStart.addEventListener("click", onStart);
   els.btnPause.addEventListener("click", onPause);
@@ -1018,12 +1058,23 @@
   });
 
   els.previewList.addEventListener("click", (event) => {
-    const btn = event.target.closest("[data-replay]");
-    if (!btn) return;
+    const btn = event.target.closest("button.btn-replay");
+    if (!btn || !els.previewList.contains(btn)) return;
     event.preventDefault();
     event.stopPropagation();
-    const i = Number(btn.getAttribute("data-replay"));
-    if (Number.isFinite(i)) replayItem(i);
+    const li = btn.closest("li[data-index]");
+    const raw = btn.getAttribute("data-replay") ?? li?.getAttribute("data-index");
+    const i = Number(raw);
+    if (!Number.isFinite(i) || i < 0) return;
+
+    // Prefer the visible line text from the clicked row (avoids speaking item 0
+    // when indices are stale). Fall back to items[i] / textarea parse.
+    const shown = li?.querySelector(".item-text")?.textContent ?? "";
+    const listNow =
+      state === "idle" ? parseItems(els.listInput.value) : items.slice();
+    const text = shown || listNow[i] || "";
+    if (state === "idle") items = listNow;
+    replayItem(i, text);
   });
 
   document.querySelectorAll(".lang-btn").forEach((btn) => {
